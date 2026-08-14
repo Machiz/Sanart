@@ -224,6 +224,8 @@ export default function Home() {
   const [usualTime, setUsualTime] = useState("5-10 min");
   const [selectedInterests, setSelectedInterests] = useState(["Respiración", "Pausas activas", "Juegos cortos"]);
   const [assessment, setAssessment] = useState([3, 3, 3, 3]);
+  const [favoritePastime, setFavoritePastime] = useState("Escuchar música");
+  const [customPastime, setCustomPastime] = useState("");
   const [mood, setMood] = useState(4);
   const [selectedTime, setSelectedTime] = useState("5 min");
   const [selectedNeed, setSelectedNeed] = useState("Despejarme");
@@ -355,12 +357,13 @@ export default function Home() {
           "¿Qué tan fácil te resulta desconectarte al terminar tu jornada?",
           "¿Qué tan satisfecho/a estás con tus momentos de descanso?",
         ].map((q, i) => <div className="scale-question" key={q}><strong>{q}</strong><Scale value={assessment[i]} onChange={(n) => setAssessment((items) => items.map((v, ix) => ix === i ? n : v))} labels={i === 0} /></div>)}</div>
+        <div className="pastime-question"><div><span className="eyebrow">Pregunta opcional</span><h2>¿Qué disfrutas hacer para recargar fuera del trabajo?</h2><p>Esto nos ayuda a sugerirte actividades que se sientan más cercanas a ti.</p></div><div className="pastime-grid" role="group" aria-label="Actividad favorita en el tiempo libre">{[["Escuchar música", "♫"], ["Caminar o moverme", "↟"], ["Leer o aprender", "▤"], ["Juegos", "◇"], ["Actividades creativas", "✦"], ["Compartir con otras personas", "◎"], ["Descansar en calma", "≈"], ["Otro (escribir)", "+"]].map(([label, icon]) => <button key={label} className={favoritePastime === label ? "selected" : ""} onClick={() => setFavoritePastime(label)}><span>{icon}</span>{label}<i>{favoritePastime === label ? "✓" : ""}</i></button>)}</div>{favoritePastime === "Otro (escribir)" && <label className="pastime-other">Escribe tu hobby o actividad <input autoFocus value={customPastime} onChange={(event) => setCustomPastime(event.target.value)} placeholder="Ej. cocinar, cuidar plantas, bailar…" /></label>}</div>
         <div className="form-actions"><Button secondary onClick={back}>Atrás</Button><Button onClick={() => go("assessment-done")}>Guardar respuestas →</Button></div>
       </OnboardingCard>
     );
 
     if (screen === "assessment-done") return (
-      <div className="completion-screen"><div className="completion-mark">✓</div><span className="eyebrow">Todo listo</span><h1>Tu punto de partida está listo</h1><p>Gracias. Usaremos tus respuestas para personalizar tu experiencia, sin emitir diagnósticos ni etiquetas.</p><Card className="quiet-card"><span>◌</span><div><strong>Una experiencia a tu ritmo</strong><p>Puedes registrar cómo te sientes, hacer pausas cuando tengas tiempo y revisar tus tendencias privadas.</p></div></Card><Button onClick={() => go("home")}>Ir a inicio →</Button></div>
+      <div className="completion-screen"><div className="completion-mark">✓</div><span className="eyebrow">Todo listo</span><h1>Tu punto de partida está listo</h1><p>Gracias. Usaremos tus respuestas para personalizar tu experiencia, sin emitir diagnósticos ni etiquetas.</p><Card className="quiet-card"><span>◌</span><div><strong>Una experiencia a tu ritmo</strong><p>Tendremos en cuenta que disfrutas {favoritePastime === "Otro (escribir)" ? (customPastime.trim() || "una actividad personal") : favoritePastime.toLowerCase()} al sugerirte pausas y actividades.</p></div></Card><Button onClick={() => go("home")}>Ir a inicio →</Button></div>
     );
 
     if (screen === "home") return (
