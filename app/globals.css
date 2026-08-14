@@ -59,6 +59,16 @@ p { color: var(--muted); line-height: 1.62; }
 .welcome-actions { display: flex; gap: 10px; margin-top: 32px; }
 .welcome-actions .btn { min-width: 150px; }
 .admin-entry { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 650; margin-top: 76px; padding: 0; text-decoration: underline; text-underline-offset: 4px; }
+.motivation-widget { align-items: flex-start; background: linear-gradient(135deg, #edf6f2, #f8f7f1); border: 1px solid #c9ddd7; border-radius: 17px; box-shadow: 0 12px 30px rgba(31, 63, 58, .07); display: grid; gap: 13px; grid-template-columns: auto 1fr auto; margin-top: 30px; max-width: 475px; padding: 17px; }
+.motivation-icon { align-items: center; background: var(--teal); border: 6px solid #d7eae4; border-radius: 50%; color: white; display: flex; flex: 0 0 42px; height: 42px; justify-content: center; width: 42px; }
+.motivation-content > span { color: var(--teal); display: block; font-size: 9px; font-weight: 850; letter-spacing: .09em; margin-bottom: 6px; text-transform: uppercase; }
+.motivation-content p { color: var(--ink); font-size: 13px; font-weight: 650; line-height: 1.45; margin: 0 0 9px; }
+.motivation-content button { background: none; border: 0; color: var(--teal); cursor: pointer; font-size: 10px; font-weight: 750; padding: 0; }
+.motivation-content button:hover { color: var(--teal-dark); text-decoration: underline; text-underline-offset: 3px; }
+.motivation-content button i { font-size: 13px; font-style: normal; margin-left: 3px; }
+.motivation-close { align-items: center; background: rgba(255,255,255,.75); border: 0; border-radius: 50%; color: var(--muted); cursor: pointer; display: flex; font-size: 17px; height: 27px; justify-content: center; width: 27px; }
+.motivation-close:hover { background: #fff; color: var(--ink); }
+.motivation-widget + .admin-entry { margin-top: 25px; }
 .welcome-visual { background: linear-gradient(145deg, #cfe4dc 0%, #8ebbb0 48%, #4b887e 100%); display: grid; min-height: 100vh; place-items: center; position: relative; }
 .pause-preview { background: rgba(255, 254, 250, .94); border: 1px solid rgba(255,255,255,.6); border-radius: 28px; box-shadow: 0 32px 80px rgba(24, 49, 47, .25); min-height: 480px; padding: 38px; position: relative; text-align: center; width: min(390px, 64%); z-index: 2; }
 .preview-label { color: var(--teal); display: block; font-size: 11px; font-weight: 800; letter-spacing: .09em; margin-bottom: 17px; text-transform: uppercase; }
@@ -358,6 +368,7 @@ legend { font-size: 13px; font-weight: 750; margin-bottom: 12px; }
   .welcome-copy h1 { font-size: 54px; }
   .welcome-copy > p { font-size: 15px; }
   .admin-entry { margin-top: 50px; }
+  .motivation-widget + .admin-entry { margin-top: 24px; }
   .welcome-visual { display: none; }
   .onboarding-card { padding: 36px 28px; }
   .app-shell { display: block; }
@@ -395,6 +406,7 @@ legend { font-size: 13px; font-weight: 750; margin-bottom: 12px; }
 @media (max-width: 520px) {
   .welcome-copy h1 { font-size: 45px; }
   .welcome-actions { align-items: stretch; flex-direction: column; }.welcome-actions .btn { width: 100%; }
+  .motivation-widget { grid-template-columns: auto 1fr auto; margin-top: 24px; padding: 14px; }.motivation-icon { border-width: 5px; height: 38px; width: 38px; }.motivation-content p { font-size: 12px; }
   .onboarding { padding: 20px 12px 30px; }.onboarding-top { align-items: flex-start; }.onboarding-top .brand small { display: none; }.stepper span { width: 24px; }.onboarding-card { border-radius: 20px; margin-top: 25px; padding: 30px 20px; }.onboarding-card > h1 { font-size: 28px; }.form-grid, .choice-cards.two, .interest-grid { grid-template-columns: 1fr; }.scale-question { align-items: flex-start; gap: 15px; grid-template-columns: 1fr; }.scale { justify-content: space-between; }.scale button { height: 38px; width: 38px; }.form-actions { flex-direction: column-reverse; }.form-actions .btn { width: 100%; }.completion-screen h1, .result-page h1 { font-size: 31px; }
   .app-body > main { padding-left: 15px; padding-right: 15px; }.home-topbar { margin-top: 4px; }.home-topbar h1, .page-header h1 { font-size: 25px; }.page-header { align-items: flex-start; flex-direction: column; }.page-header > .btn { width: 100%; }
   .mood-row { min-width: 315px; }.mood-row button { min-width: 51px; }.mood-row button small { font-size: 7px; }

@@ -58,6 +58,16 @@ const timeOptions = ["2 min", "5 min", "10 min", "15 min", "20+ min"];
 const needs = ["Relajarme", "Despejarme", "Recuperar energía", "Moverme", "Desconectarme", "Aprender", "Conectar"];
 const interests = ["Respiración", "Pausas activas", "Juegos cortos", "Relajación", "Música / audio", "Aprendizaje", "Actividades sociales", "Mindfulness"];
 
+const motivationalPhrases = [
+  "Hoy no tienes que hacerlo todo: una pausa también es avanzar.",
+  "Cuidarte también forma parte de cuidar bien.",
+  "Una pausa breve puede abrir espacio para volver con más claridad.",
+  "Respirar, bajar el ritmo y continuar también cuenta.",
+  "Tu energía merece atención, incluso en los días ocupados.",
+  "No todo tiene que resolverse ahora. Puedes empezar por una pausa.",
+  "Reconocer cómo estás es una forma de cuidarte.",
+];
+
 const activities: Activity[] = [
   { name: "Respiración 4-4", duration: 5, category: "Respiración", energy: "Suave", description: "Una guía breve para soltar tensión y volver al presente.", tone: "mint" },
   { name: "Pausa activa de escritorio", duration: 5, category: "Movimiento", energy: "Media", description: "Cinco movimientos simples que puedes hacer junto a tu puesto.", tone: "blue" },
@@ -222,6 +232,8 @@ export default function Home() {
   const [remindersOn, setRemindersOn] = useState(true);
   const [toast, setToast] = useState("");
   const [eventModal, setEventModal] = useState(false);
+  const [showMotivation, setShowMotivation] = useState(true);
+  const [motivationIndex, setMotivationIndex] = useState(0);
 
   const go = (next: Screen) => {
     setHistory((items) => [...items.slice(-12), screen]);
@@ -263,6 +275,11 @@ export default function Home() {
           <h1>Tu bienestar<br />también importa</h1>
           <p>Una herramienta para acompañarte durante tu jornada, ayudarte a aprovechar tus pausas y encontrar recursos de bienestar.</p>
           <div className="welcome-actions"><Button onClick={() => go("profile-setup")}>Comenzar <span>→</span></Button><Button ghost onClick={() => go("home")}>Explorar prototipo</Button></div>
+          {showMotivation && <aside className="motivation-widget" aria-label="Frase motivacional para comenzar">
+            <div className="motivation-icon" aria-hidden="true">✦</div>
+            <div className="motivation-content" aria-live="polite"><span>Una frase para comenzar</span><p>“{motivationalPhrases[motivationIndex]}”</p><button onClick={() => setMotivationIndex((motivationIndex + 1) % motivationalPhrases.length)}>Ver otra frase <i>↻</i></button></div>
+            <button className="motivation-close" aria-label="Cerrar frase motivacional" onClick={() => setShowMotivation(false)}>×</button>
+          </aside>}
           <button className="admin-entry" onClick={() => go("admin-login")}>Acceso institucional</button>
         </div>
         <div className="welcome-visual" aria-hidden="true">
