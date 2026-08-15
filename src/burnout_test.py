@@ -112,7 +112,7 @@ class MultiTurnBurnoutEvaluator:
         )
 
         # Clasificación del umbral
-        if len(high_risk_matches) >= 2 or severity_score >= 6 or (len(detected_dimensions) == 3 and severity_score >= 4):
+        if len(high_risk_matches) >= 2 or severity_score >= 5 or (len(detected_dimensions) == 3 and severity_score >= 4):
             level = "Alto Riesgo"
             threshold_tag = "[ROJO] Riesgo Alto de Burnout"
             summary = "Relato acumulado muestra agotamiento severo, fatiga crítica o señales de alerta."

@@ -5,6 +5,7 @@ app.py - Consola Interactiva Multiturno con Impresión de Resultados Finales
 import sys
 import os
 import json
+import random
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -23,6 +24,13 @@ CLOSING_KEYWORDS = {
     "ya esta",
 }
 
+INITIAL_GREETINGS = [
+    "¡Hola! Soy Sanart RAG. ¿Cómo te has sentido últimamente en tu trabajo o actividad diaria?",
+    "Hola, soy Sanart RAG. Me alegra leerte. ¿Cómo te has sentido estos días en el trabajo?",
+    "Bienvenido/a, soy Sanart RAG. Si te parece, cuéntame cómo te has estado sintiendo en tu rutina laboral.",
+    "Hola, aquí Sanart RAG. ¿Qué tal has estado últimamente a nivel emocional y de energía en el trabajo?",
+]
+
 
 def print_final_results_summary(res: dict):
     """Imprime un bloque estructurado y limpio con los resultados finales de la evaluación."""
@@ -31,7 +39,6 @@ def print_final_results_summary(res: dict):
     print("           📋 INFORME FINAL Y RESULTADOS DE EVALUACIÓN           ")
     print("==================================================================")
     print(f" 🆔 ID de Sesión Anónimo   : {res['session_id']}")
-    print(f" 🔄 Turnos de Entrevista    : {res['turn_count']} / {res['state']['max_turns']}")
     print(f" 🏷️ Estado de Burnout      : {state['threshold_tag']}")
     print(f" 🧩 Dimensiones Detectadas  : {', '.join(state['detected_dimensions']) if state['detected_dimensions'] else 'Ninguna'}")
     print(f" 📝 Diagnóstico Rápido      : {state['summary']}")
@@ -54,7 +61,7 @@ def main():
     agent = BurnoutRAGAgent()
     session = BurnoutRAGSession(max_turns=12, require_closing_keyword=True)
 
-    print("Asistente: ¡Hola! Soy Sanart RAG. ¿Cómo te has sentido últimamente en tu trabajo o actividad diaria?")
+    print(f"Asistente: {random.choice(INITIAL_GREETINGS)}")
 
     last_result = None
 
@@ -100,7 +107,6 @@ def main():
             res = agent.process_chat_turn(session, user_input)
             last_result = res
 
-            print(f"\n[Turno {res['turn_count']} de {session.evaluator.max_interview_turns}]")
             out_str = res["response"].encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
             print(f"\nAsistente:\n{out_str}")
 

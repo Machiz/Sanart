@@ -2,11 +2,12 @@
 rag.py - RAG Multiturno con Entrevista Diagnóstica de Burnout y Conexión LLM
 
 Orquesta la evaluación conversacional multiturno sobre burnout, aplicando anonimización,
-búsqueda vectorial en Chroma DB y generación de preguntas exploratorias o informe final con Gemini.
+búsqueda vectorial en Chroma DB y generación de preguntas exploratorias o informe final con llama3.1 (Ollama).
 """
 
 import os
 import sys
+import random
 os.environ["USE_TF"] = "0"
 os.environ["USE_TORCH"] = "1"
 from typing import Dict, Any, Optional, List
@@ -18,7 +19,6 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_google_genai import ChatGoogleGenerativeAI
 try:
     from langchain_ollama import ChatOllama
 except ImportError:
@@ -30,20 +30,29 @@ from src.burnout_test import MultiTurnBurnoutEvaluator
 
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chroma_db")
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_MODEL_NAME = "llama3.1"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+NATURAL_OPENINGS = [
+    "Gracias por compartirlo.",
+    "Te entiendo.",
+    "Aprecio que lo cuentes.",
+    "Gracias por abrirte con esto.",
+    "Tiene sentido lo que comentas.",
+]
+
+REPETITIVE_OPENING_PREFIXES = (
+    "lo siento mucho",
+    "siento mucho",
+    "lamento mucho",
+)
 
 
 def get_default_llm(temperature: float = 0.3) -> Optional[Any]:
     """
-    Obtiene el LLM configurado prioritariamente por variables de entorno:
-    1. USE_OLLAMA=1 (por defecto en .env) o proveedor Ollama (modelo open source local como llama3).
-    2. GOOGLE_API_KEY (Gemini).
+    Obtiene exclusivamente el LLM local Ollama con modelo llama3.1.
     """
-    provider = os.getenv("LLM_PROVIDER", "").lower()
-    use_ollama = os.getenv("USE_OLLAMA", "1").lower() in ["1", "true", "yes"]
-
-    if (use_ollama or provider == "ollama") and ChatOllama is not None:
+    if ChatOllama is not None:
         try:
             return ChatOllama(
                 model=OLLAMA_MODEL_NAME,
@@ -53,33 +62,18 @@ def get_default_llm(temperature: float = 0.3) -> Optional[Any]:
         except Exception as e:
             print(f"[ADVERTENCIA] No se pudo conectar con Ollama ({OLLAMA_MODEL_NAME}): {e}")
 
-    if os.getenv("GOOGLE_API_KEY") and not use_ollama:
-        try:
-            return ChatGoogleGenerativeAI(
-                model="gemini-3.5-flash",
-                google_api_key=os.getenv("GOOGLE_API_KEY"),
-                temperature=temperature
-            )
-        except Exception as e:
-            print(f"[ADVERTENCIA] No se pudo conectar con Gemini: {e}")
-
-    # Fallback automático a Ollama si está disponible por defecto sin API Key
-    if ChatOllama is not None:
-        try:
-            return ChatOllama(
-                model=OLLAMA_MODEL_NAME,
-                base_url=OLLAMA_BASE_URL,
-                temperature=temperature
-            )
-        except Exception as e:
-            pass
-
     return None
 
 
 INTERVIEW_PROMPT_TEMPLATE = """
-Eres "Sanart RAG", un asistente virtual empático realizando una entrevista de evaluación conversacional sobre prevención del síndrome de Burnout.
+Eres Sanarte, un asistente virtual empático para el personal del INSN San Borja.
+Tu objetivo es escuchar, acompañar y guiar con un estilo cálido y cercano.
 
+REGLAS DE CONVERSACIÓN:
+1. Habla de forma natural y humana, como una conversación real, evitando frases robóticas o muy técnicas.
+2. NUNCA repitas exactamente la misma pregunta o frase del turno anterior; reformula o cambia de enfoque.
+3. Responde breve (2 a 5 líneas), con empatía y claridad.
+4. Si la respuesta del usuario es corta o ambigua, pide precisión con opciones simples (por ejemplo: "alta/media/baja").
 Historial de la conversación hasta ahora:
 {chat_history}
 
@@ -94,7 +88,7 @@ Dimensiones detectadas hasta el momento:
 Instrucciones para este turno (turno actual: {turn_count}):
 - Si AÚN NO se ha completado la entrevista (is_complete = {is_complete}):
   1. Muestra empatía hacia lo que el usuario compartió.
-    2. Haz UNA pregunta de seguimiento amable y clara para explorar aspectos no mencionados, O SI ESTÁ ACTIVO EL CUESTIONARIO MBI, presenta de manera clara las 5 preguntas indicadas.
+    2. Haz UNA pregunta de seguimiento amable y clara para explorar aspectos no mencionados, O SI ESTÁ ACTIVO EL CUESTIONARIO MBI, presenta únicamente la pregunta individual indicada.
     3. Si short_response_detected = {short_response_detected}, NO repitas la misma pregunta textual del turno anterior. Reformula en formato concreto (por ejemplo con opciones cortas) o cambia a otra dimensión pendiente.
   3. No des aún la clasificación final a menos que el usuario lo solicite explicitamente.
 
@@ -182,6 +176,45 @@ class BurnoutRAGAgent:
         if not docs:
             return "Sin contexto específico disponible."
         return "\n\n".join([doc.page_content for doc in docs])
+
+    def _get_last_assistant_message(self, session: BurnoutRAGSession) -> Optional[str]:
+        for line in reversed(session.chat_history_formatted):
+            if line.startswith("Asistente: "):
+                return line[len("Asistente: "):].strip()
+        return None
+
+    def _normalize_lead(self, text: str) -> str:
+        lead = text.strip().lower().split("\n")[0]
+        for separator in [".", ",", ":", "!", "?"]:
+            lead = lead.split(separator)[0]
+        return " ".join(lead.split())
+
+    def _rewrite_repetitive_opening(self, response_text: str, last_assistant: Optional[str]) -> str:
+        if not response_text:
+            return response_text
+
+        stripped = response_text.strip()
+        if not stripped:
+            return response_text
+
+        normalized_current = self._normalize_lead(stripped)
+        normalized_last = self._normalize_lead(last_assistant) if last_assistant else ""
+
+        must_rewrite = any(normalized_current.startswith(prefix) for prefix in REPETITIVE_OPENING_PREFIXES)
+        if normalized_last and normalized_current and normalized_current == normalized_last:
+            must_rewrite = True
+
+        if not must_rewrite:
+            return response_text
+
+        replacement_opening = random.choice(NATURAL_OPENINGS)
+        parts = stripped.split("\n", 1)
+        remainder = parts[1] if len(parts) > 1 else ""
+
+        if remainder:
+            return f"{replacement_opening}\n{remainder}".strip()
+
+        return replacement_opening
 
     def generate_final_assessment(
         self,
@@ -276,39 +309,22 @@ class BurnoutRAGAgent:
                 })
             except Exception as e:
                 print(f"[ADVERTENCIA] Error en generación LLM ({type(e).__name__}): {e}")
-                # Si falló Gemini o el LLM principal, intentar Ollama como fallback secundario
-                if ChatOllama is not None and not isinstance(llm, ChatOllama):
-                    try:
-                        fallback_llm = ChatOllama(model=OLLAMA_MODEL_NAME, base_url=OLLAMA_BASE_URL, temperature=0.3)
-                        chain = prompt | fallback_llm | StrOutputParser()
-                        response_text = chain.invoke({
-                            "chat_history": history_text if history_text else "(Inicio de conversación)",
-                            "latest_user_input": clean_input,
-                            "detected_dimensions": ", ".join(state["detected_dimensions"]) if state["detected_dimensions"] else "Ninguna aún",
-                            "mbi_section": mbi_section,
-                            "turn_count": state["turn_count"],
-                            "is_complete": str(state["is_complete"]).lower(),
-                            "short_response_detected": str(short_response_detected).lower(),
-                            "context": context
-                        })
-                    except Exception:
-                        response_text = None
+                response_text = None
 
         if not response_text:
             # Modo Offline (Fallback seguro)
             if mbi_triggered and current_mbi_info:
                 q_num, total_q, single_q = current_mbi_info
                 response_text = (
-                    f"He notado que estás experimentando una carga de tensión moderada (Riesgo Moderado [AMARILLO]). "
-                    f"Para profundizar en tu evaluación, evaluaremos 5 preguntas del Cuestionario Maslach (MBI) una a una.\n\n"
+                    f"Gracias por compartirlo. Veo señales de tensión moderada y quiero entenderte mejor con unas preguntas breves del MBI.\n\n"
                     f"📋 Pregunta MBI ({q_num} de {total_q}):\n"
                     f"👉 {single_q}\n\n"
-                    f"(Indica tu frecuencia del 0: Nunca al 6: Todos los días)."
+                    f"Si te sirve, responde con una frecuencia de 0 (Nunca) a 6 (Todos los días)."
                 )
             elif not state["is_complete"]:
                 next_q = evaluator.suggest_next_question(state, last_user_input=clean_input)
                 response_text = (
-                    f"Entiendo lo que mencionas. Para evaluar mejor tu situación (Turno {state['turn_count']}):\n\n"
+                    f"Gracias por contármelo.\n\n"
                     f"👉 {next_q}"
                 )
             else:
@@ -321,6 +337,9 @@ class BurnoutRAGAgent:
                     f"--- GUÍA DE APOYO RECUPERADA (RAG) ---\n"
                     f"{context}"
                 )
+
+            last_assistant = self._get_last_assistant_message(session)
+            response_text = self._rewrite_repetitive_opening(response_text, last_assistant)
 
         session.chat_history_formatted.append(f"Usuario: {clean_input}")
         session.chat_history_formatted.append(f"Asistente: {response_text}")
