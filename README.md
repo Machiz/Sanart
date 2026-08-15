@@ -1,48 +1,33 @@
-# Sanart - Sistema RAG para Detección y Prevención de Burnout
+# Sanart — Bienestar INSN San Borja
 
-**Sanart** es un sistema RAG (Retrieval-Augmented Generation) diseñado para la detección temprana, evaluación diagnóstica y acompañamiento en la prevención del síndrome de Burnout y estrés laboral.
+Prototipo web de bienestar laboral para acompañar al personal del INSN San Borja durante su jornada con pausas guiadas, actividades breves, recordatorios y registros personales.
 
----
+## Funcionalidades
 
-## 📁 Estructura del Proyecto
+- Perfil y disponibilidad habitual guardados en el navegador.
+- Respiración guiada 4–4 con temporizador y progreso.
+- Pausas activas y estiramientos paso a paso.
+- Minijuegos de atención, desconexión y relajación.
+- Recordatorios de talleres y descansos.
+- Indicadores personales que comienzan en cero y se actualizan con el uso.
 
-```text
-Sanart/
-├── app.py                       # Punto de entrada interactivo (Test de Burnout y RAG)
-├── data/                        # Guías y documentos de referencia sobre salud mental y burnout
-│   └── sample_burnout_guide.md
-├── src/
-│   ├── __init__.py
-│   ├── ingest.py                # Script para procesar documentos y crear embeddings (Chroma DB)
-│   ├── rag.py                   # Lógica del RAG, prompts del sistema y conexión con el LLM
-│   ├── burnout_test.py          # Test rápido, preguntas y cálculo de puntajes (Umbrales Verde, Amarillo, Rojo)
-│   └── privacy.py               # Funciones de anonimización (Data Scrubbing / UUIDs para métricas)
-├── requirements.txt             # Dependencias del proyecto
-└── .env.example                 # Plantilla de variables de entorno (API Keys)
-```
+## Desarrollo local
 
----
+Requiere Node.js 22.13 o posterior.
 
-## 🚀 Instalación y Uso
-
-### 1. Instalación de Dependencias
 ```bash
-pip install -r requirements.txt
+npm install
+npm run dev
 ```
 
-### 2. Ingesta de Documentos
-Para procesar los documentos de referencia en `data/` y generar la base de datos vectorial Chroma:
+Para generar una compilación de producción:
+
 ```bash
-python -m src.ingest
+npm run build
 ```
 
-### 3. Ejecución de la Aplicación
-Inicia la consola interactiva:
-```bash
-python app.py
-```
+## Sitio publicado
 
----
+[bienestar-insn-san-borja.iba-dea.chatgpt.site](https://bienestar-insn-san-borja.iba-dea.chatgpt.site/)
 
-## 🔒 Privacidad y Sanitización de Datos
-El módulo `src/privacy.py` se encarga de eliminar Información de Identificación Personal (PII) como correos electrónicos, números telefónicos y números de identificación antes de enviar el texto al modelo de lenguaje o a la base de datos de vectorización, garantizando el anonimato del usuario.
+Los datos personales del prototipo se almacenan localmente en el navegador del usuario.
