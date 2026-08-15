@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 type Screen =
   | "welcome"
@@ -63,8 +63,16 @@ type Reminder = {
   enabled: boolean;
 };
 
-const timeOptions = ["2 min", "5 min", "10 min", "15 min", "20+ min"];
-const needs = ["Relajarme", "Despejarme", "Recuperar energía", "Moverme", "Desconectarme", "Aprender", "Conectar"];
+type UsageStats = {
+  activities: number;
+  pauses: number;
+  events: number;
+  checkins: number;
+  respiration: number;
+  movement: number;
+  games: number;
+};
+
 const interests = ["Respiración", "Pausas activas", "Juegos cortos", "Relajación", "Música / audio", "Aprendizaje", "Actividades sociales", "Mindfulness"];
 
 const motivationalPhrases = [
@@ -81,9 +89,27 @@ const activities: Activity[] = [
   { name: "Respiración 4-4", duration: 5, category: "Respiración", energy: "Suave", description: "Una guía breve para soltar tensión y volver al presente.", tone: "mint" },
   { name: "Pausa activa de escritorio", duration: 5, category: "Movimiento", energy: "Media", description: "Cinco movimientos simples que puedes hacer junto a tu puesto.", tone: "blue" },
   { name: "Desconecta", duration: 4, category: "Juegos", energy: "Suave", description: "Cambia el foco de atención con una búsqueda visual breve.", tone: "amber" },
-  { name: "Escaneo corporal", duration: 10, category: "Relajación", energy: "Muy suave", description: "Recorre el cuerpo con atención y reconoce dónde soltar tensión.", tone: "violet" },
+  { name: "Jardín de calma", duration: 10, category: "Juegos", energy: "Muy suave", description: "Haz florecer un jardín sereno, sin prisa ni puntuaciones, para soltar tensión.", tone: "violet" },
   { name: "Reto de atención", duration: 3, category: "Juegos", energy: "Media", description: "Recuerda una secuencia sencilla y dale un descanso a tu mente.", tone: "coral" },
   { name: "Estiramiento express", duration: 2, category: "Movimiento", energy: "Media", description: "Libera hombros, cuello y brazos sin interrumpir tu jornada.", tone: "teal" },
+];
+
+const emptyUsageStats: UsageStats = { activities: 0, pauses: 0, events: 0, checkins: 0, respiration: 0, movement: 0, games: 0 };
+
+const disconnectLevels = [
+  { target: "◇", shapes: ["○", "△", "◇", "□", "○", "△", "□", "◇", "○", "△", "◇", "□"] },
+  { target: "○", shapes: ["□", "○", "△", "◇", "○", "□", "△", "◇", "□", "○", "△", "◇"] },
+  { target: "△", shapes: ["◇", "□", "△", "○", "□", "△", "◇", "○", "△", "□", "◇", "○"] },
+  { target: "□", shapes: ["△", "◇", "○", "□", "△", "○", "□", "◇", "○", "△", "◇", "□"] },
+  { target: "✦", shapes: ["○", "✦", "◇", "△", "□", "○", "△", "✦", "◇", "□", "✦", "○"] },
+];
+
+const attentionSequences = [
+  ["○", "△", "□"],
+  ["□", "○", "◇", "△"],
+  ["△", "◇", "○", "□", "△"],
+  ["◇", "□", "○", "△", "◇", "○"],
+  ["○", "◇", "△", "□", "○", "△", "◇"],
 ];
 
 const initialEvents: EventItem[] = [
@@ -151,10 +177,6 @@ function MoodSelector({ value, onChange }: { value: number; onChange: (n: number
   );
 }
 
-function TimeSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return <div className="time-grid">{timeOptions.map((time) => <button key={time} className={value === time ? "selected" : ""} onClick={() => onChange(time)}>{time}</button>)}</div>;
-}
-
 function ChipRow({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
   return <div className="chips">{options.map((option) => <button key={option} className={value === option ? "selected" : ""} onClick={() => onChange(option)}>{option}</button>)}</div>;
 }
@@ -176,7 +198,7 @@ function AppShell({ screen, go, children }: { screen: Screen; go: (s: Screen) =>
         <Brand />
         <nav>{userNav.map(([id, label, icon]) => <button key={id} className={active === id ? "active" : ""} onClick={() => go(id)}><span>{icon}</span>{label}</button>)}</nav>
         <button className="support-link" onClick={() => go("support")}><span>?</span><div><strong>¿Necesitas apoyo?</strong><small>Consulta recursos disponibles</small></div></button>
-        <div className="user-mini"><span>AT</span><div><strong>Ana Torres</strong><small>Hospitalización</small></div></div>
+        <div className="user-mini"><span>MI</span><div><strong>Mi perfil</strong><small>Datos personales</small></div></div>
       </aside>
       <div className="app-body">
         <div className="mobile-top"><Brand /><button aria-label="Notificaciones" onClick={() => go("notifications")}>♢<i /></button></div>
@@ -217,23 +239,33 @@ function MiniBars({ values, labels, color = "teal" }: { values: number[]; labels
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("welcome");
   const [history, setHistory] = useState<Screen[]>([]);
-  const [name, setName] = useState("Ana Torres");
+  const [storageReady, setStorageReady] = useState(false);
+  const [name, setName] = useState("");
   const [area, setArea] = useState("Hospitalización");
   const [staffType, setStaffType] = useState("Asistencial");
   const [shift, setShift] = useState("Turno mañana");
   const [usualTime, setUsualTime] = useState("5-10 min");
-  const [selectedInterests, setSelectedInterests] = useState(["Respiración", "Pausas activas", "Juegos cortos"]);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [assessment, setAssessment] = useState([3, 3, 3, 3]);
-  const [favoritePastime, setFavoritePastime] = useState("Escuchar música");
+  const [favoritePastime, setFavoritePastime] = useState("");
   const [customPastime, setCustomPastime] = useState("");
-  const [mood, setMood] = useState(4);
+  const [mood, setMood] = useState(0);
   const [selectedTime, setSelectedTime] = useState("5 min");
   const [selectedNeed, setSelectedNeed] = useState("Despejarme");
   const [activity, setActivity] = useState<Activity>(activities[2]);
   const [activityStep, setActivityStep] = useState(0);
   const [found, setFound] = useState<number[]>([]);
+  const [gameLevel, setGameLevel] = useState(1);
+  const [attentionLevel, setAttentionLevel] = useState(1);
+  const [attentionInput, setAttentionInput] = useState<string[]>([]);
+  const [attentionShowing, setAttentionShowing] = useState(true);
+  const [calmFound, setCalmFound] = useState<number[]>([]);
+  const [breathElapsed, setBreathElapsed] = useState(0);
+  const [sessionLogged, setSessionLogged] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [feedbackCompleted, setFeedbackCompleted] = useState(false);
   const [checkin, setCheckin] = useState([3, 4, 3]);
+  const [usageStats, setUsageStats] = useState<UsageStats>(emptyUsageStats);
   const [activityFilter, setActivityFilter] = useState("Todos");
   const [eventFilter, setEventFilter] = useState("Todos");
   const [events, setEvents] = useState(initialEvents);
@@ -253,6 +285,40 @@ export default function Home() {
     { id: 3, kind: "Descanso", title: "Pausa de media tarde", schedule: "Hoy · 15:30", detail: "2 min · Solo en turno", enabled: false },
   ]);
 
+  useEffect(() => {
+    try {
+      const savedProfile = window.localStorage.getItem("bienestar-insn-profile");
+      if (savedProfile) {
+        const profile = JSON.parse(savedProfile);
+        if (profile.completed) {
+          setName(profile.name || "");
+          setArea(profile.area || "Hospitalización");
+          setStaffType(profile.staffType || "Asistencial");
+          setShift(profile.shift || "Turno mañana");
+          setUsualTime(profile.usualTime || "5-10 min");
+          setSelectedInterests(profile.selectedInterests || []);
+          setFavoritePastime(profile.favoritePastime || "");
+          setCustomPastime(profile.customPastime || "");
+          setSelectedTime(profile.usualTime === "2-5 min" ? "2 min" : profile.usualTime === "10-20 min" ? "10 min" : profile.usualTime === "Más de 20 min" ? "20+ min" : "5 min");
+          setScreen("home");
+        }
+      }
+      const savedUsage = window.localStorage.getItem("bienestar-insn-usage");
+      if (savedUsage) setUsageStats({ ...emptyUsageStats, ...JSON.parse(savedUsage) });
+      setFeedbackCompleted(window.localStorage.getItem("bienestar-insn-feedback-complete") === "true");
+    } catch {
+      // Si el almacenamiento del navegador no está disponible, la app sigue funcionando en esta sesión.
+    } finally {
+      setStorageReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen !== "activity-run" || activity.name !== "Respiración 4-4") return;
+    const timer = window.setInterval(() => setBreathElapsed((value) => Math.min(32, value + 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [screen, activity.name]);
+
   const go = (next: Screen) => {
     setHistory((items) => [...items.slice(-12), screen]);
     setScreen(next);
@@ -268,6 +334,23 @@ export default function Home() {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   };
+  const persistProfile = (timeValue = usualTime) => {
+    window.localStorage.setItem("bienestar-insn-profile", JSON.stringify({ completed: true, name: name.trim(), area, staffType, shift, usualTime: timeValue, selectedInterests, favoritePastime, customPastime }));
+  };
+  const updateUsage = (changes: Partial<UsageStats>) => {
+    setUsageStats((current) => {
+      const next = { ...current };
+      (Object.keys(changes) as (keyof UsageStats)[]).forEach((key) => { next[key] = current[key] + (changes[key] || 0); });
+      window.localStorage.setItem("bienestar-insn-usage", JSON.stringify(next));
+      return next;
+    });
+  };
+  const completeOnboarding = () => {
+    persistProfile();
+    setHistory([]);
+    setScreen("home");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const recommendation = useMemo(() => {
     if (selectedNeed === "Moverme") return activities[1];
     if (selectedNeed === "Relajarme") return activities[0];
@@ -279,10 +362,33 @@ export default function Home() {
     setActivity(item);
     setActivityStep(0);
     setFound([]);
+    setGameLevel(1);
+    setAttentionLevel(1);
+    setAttentionInput([]);
+    setAttentionShowing(true);
+    setCalmFound([]);
+    setBreathElapsed(0);
+    setSessionLogged(false);
     go("activity-run");
   };
-  const finishActivity = () => go("activity-result");
-  const filteredActivities = activities.filter((item) => activityFilter === "Todos" || activityFilter === `${item.duration} min` || activityFilter === item.category);
+  const finishActivity = () => {
+    if (!sessionLogged) {
+      const category: keyof UsageStats = activity.category === "Respiración" ? "respiration" : activity.category === "Movimiento" ? "movement" : "games";
+      updateUsage({ activities: 1, pauses: 1, [category]: 1 });
+      setSessionLogged(true);
+    }
+    go("activity-result");
+  };
+  const maxActivityMinutes = usualTime === "2-5 min" ? 5 : usualTime === "5-10 min" ? 10 : usualTime === "10-20 min" ? 20 : usualTime === "Más de 20 min" ? 999 : 10;
+  const filteredActivities = activities.filter((item) => item.duration <= maxActivityMinutes && (activityFilter === "Todos" || activityFilter === item.category));
+  const energyValue = usageStats.checkins > 0 ? Math.round(checkin[0] * 20) : 0;
+  const recoveryValue = usageStats.checkins > 0 ? Math.round((6 - checkin[1]) * 20) : Math.min(100, usageStats.activities * 12);
+  const moodValue = mood > 0 ? mood * 20 : usageStats.checkins > 0 ? checkin[2] * 20 : 0;
+  const hasUsage = usageStats.activities + usageStats.checkins + usageStats.events > 0;
+  const weeklyBars = hasUsage ? [0, 0, 0, 0, 0, Math.min(100, usageStats.activities * 12), Math.max(energyValue, moodValue)] : [0, 0, 0, 0, 0, 0, 0];
+  const participationValue = hasUsage ? Math.min(100, (usageStats.activities + usageStats.events + usageStats.checkins) * 5) : 0;
+  const adminTrendValues = hasUsage ? [0, 0, 0, 0, 0, 0, 0, 0, Math.max(recoveryValue, moodValue)] : Array(9).fill(0);
+  const areaUsage = ["Emergencia", "Hospitalización", "Administración", "Consultorios", "UCI"].map((label) => [label, label === area ? participationValue : 0] as const);
   const nextReminder = reminders.find((item) => item.enabled);
   const createReminder = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -296,12 +402,23 @@ export default function Home() {
     showToast("Recordatorio creado y activado");
   };
   const confirmAttendance = () => {
+    if (!rsvp.includes(selectedEvent.id)) updateUsage({ events: 1 });
     setRsvp((items) => items.includes(selectedEvent.id) ? items : [...items, selectedEvent.id]);
     setReminders((items) => items.some((reminder) => reminder.title === selectedEvent.title) ? items : [...items, { id: Date.now(), kind: "Taller", title: selectedEvent.title, schedule: `${selectedEvent.day} · ${selectedEvent.time}`, detail: `15 min antes · ${selectedEvent.place}`, enabled: true }]);
     showToast("Asistencia confirmada y recordatorio activado");
   };
+  const recordCheckin = () => {
+    updateUsage({ checkins: 1 });
+    go("checkin-result");
+  };
+  const finishFirstFeedback = (wouldRepeat: boolean) => {
+    window.localStorage.setItem("bienestar-insn-feedback-complete", "true");
+    setFeedbackCompleted(true);
+    showToast(wouldRepeat ? "Gracias por tu respuesta" : "Buscaremos otras opciones");
+  };
 
   const renderScreen = () => {
+    if (!storageReady) return <div className="loading-screen"><Brand /><p>Preparando tu espacio de bienestar…</p></div>;
     if (screen === "welcome") return (
       <div className="welcome-screen">
         <div className="welcome-copy">
@@ -320,17 +437,17 @@ export default function Home() {
         <div className="welcome-visual" aria-hidden="true">
           <div className="soft-orbit orbit-one" /><div className="soft-orbit orbit-two" />
           <div className="pause-preview"><span className="preview-label">Tu próxima pausa</span><strong>Respira y reinicia</strong><p>5 minutos para volver con más claridad.</p><div className="breath-circle">inhala<br /><small>4 seg</small></div><div className="preview-progress"><i /><i /><i /><i /></div></div>
-          <div className="floating-note note-one"><span>◔</span><div><strong>72%</strong><small>Energía esta semana</small></div></div>
-          <div className="floating-note note-two"><span>✓</span><div><strong>3 pausas</strong><small>Tiempo para ti</small></div></div>
+          <div className="floating-note note-one"><span>◔</span><div><strong>0%</strong><small>Energía esta semana</small></div></div>
+          <div className="floating-note note-two"><span>✓</span><div><strong>0 pausas</strong><small>Tiempo para ti</small></div></div>
         </div>
       </div>
     );
 
     if (screen === "profile-setup") return (
       <OnboardingCard step={1}><span className="eyebrow">Empecemos</span><h1>Cuéntanos un poco sobre ti</h1><p>Solo pedimos lo necesario para adaptar tus recomendaciones.</p>
-        <div className="form-grid"><label>Nombre<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" /></label><label>Área<select value={area} onChange={(e) => setArea(e.target.value)}>{["Emergencia", "Hospitalización", "UCI", "Consultorios", "Diagnóstico", "Administración", "Otro"].map((x) => <option key={x}>{x}</option>)}</select></label></div>
+        <div className="form-grid"><label>Nombre<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Pon tu nombre" autoComplete="name" /></label><label>Área<select value={area} onChange={(e) => setArea(e.target.value)}>{["Emergencia", "Hospitalización", "UCI", "Consultorios", "Diagnóstico", "Administración", "Otro"].map((x) => <option key={x}>{x}</option>)}</select></label></div>
         <fieldset><legend>Tipo de personal</legend><div className="choice-cards two">{["Asistencial", "Administrativo"].map((x) => <button key={x} className={staffType === x ? "selected" : ""} onClick={() => setStaffType(x)}><span>{x === "Asistencial" ? "+" : "▤"}</span><strong>Personal {x.toLowerCase()}</strong><small>{x === "Asistencial" ? "Atención clínica y asistencial" : "Gestión y soporte institucional"}</small></button>)}</div></fieldset>
-        <div className="form-actions"><Button secondary onClick={back}>Atrás</Button><Button onClick={() => go("schedule-setup")}>Continuar →</Button></div>
+        <div className="form-actions"><Button secondary onClick={back}>Atrás</Button><Button disabled={!name.trim()} onClick={() => go("schedule-setup")}>Continuar →</Button></div>
       </OnboardingCard>
     );
 
@@ -357,22 +474,22 @@ export default function Home() {
           "¿Qué tan fácil te resulta desconectarte al terminar tu jornada?",
           "¿Qué tan satisfecho/a estás con tus momentos de descanso?",
         ].map((q, i) => <div className="scale-question" key={q}><strong>{q}</strong><Scale value={assessment[i]} onChange={(n) => setAssessment((items) => items.map((v, ix) => ix === i ? n : v))} labels={i === 0} /></div>)}</div>
-        <div className="pastime-question"><div><span className="eyebrow">Pregunta opcional</span><h2>¿Qué disfrutas hacer para recargar fuera del trabajo?</h2><p>Esto nos ayuda a sugerirte actividades que se sientan más cercanas a ti.</p></div><div className="pastime-grid" role="group" aria-label="Actividad favorita en el tiempo libre">{[["Escuchar música", "♫"], ["Caminar o moverme", "↟"], ["Leer o aprender", "▤"], ["Juegos", "◇"], ["Actividades creativas", "✦"], ["Compartir con otras personas", "◎"], ["Descansar en calma", "≈"], ["Otro (escribir)", "+"]].map(([label, icon]) => <button key={label} className={favoritePastime === label ? "selected" : ""} onClick={() => setFavoritePastime(label)}><span>{icon}</span>{label}<i>{favoritePastime === label ? "✓" : ""}</i></button>)}</div>{favoritePastime === "Otro (escribir)" && <label className="pastime-other">Escribe tu hobby o actividad <input autoFocus value={customPastime} onChange={(event) => setCustomPastime(event.target.value)} placeholder="Ej. cocinar, cuidar plantas, bailar…" /></label>}</div>
+        <div className="pastime-question"><div><span className="eyebrow">Pregunta opcional</span><h2>¿Qué disfrutas hacer para recargar fuera del trabajo?</h2><p>Esto nos ayuda a sugerirte actividades que se sientan más cercanas a ti.</p></div><div className="pastime-grid" role="group" aria-label="Actividad favorita en el tiempo libre">{[["Escuchar música", "♫"], ["Caminar o moverme", "↟"], ["Leer o aprender", "▤"], ["Juegos", "◇"], ["Actividades creativas", "✦"], ["Compartir con otras personas", "◎"], ["Descansar en calma", "≈"], ["Otro (escribir)", "+"]].map(([label, icon]) => <button key={label} className={favoritePastime === label ? "selected" : ""} onClick={() => setFavoritePastime(label)}><span>{icon}</span>{label}<i>{favoritePastime === label ? "✓" : ""}</i></button>)}</div>{favoritePastime === "Otro (escribir)" && <label className="pastime-other">Escribe tu hobby o actividad <input value={customPastime} onChange={(event) => setCustomPastime(event.target.value)} placeholder="Ej. cocinar, cuidar plantas, bailar…" /></label>}</div>
         <div className="form-actions"><Button secondary onClick={back}>Atrás</Button><Button onClick={() => go("assessment-done")}>Guardar respuestas →</Button></div>
       </OnboardingCard>
     );
 
     if (screen === "assessment-done") return (
-      <div className="completion-screen"><div className="completion-mark">✓</div><span className="eyebrow">Todo listo</span><h1>Tu punto de partida está listo</h1><p>Gracias. Usaremos tus respuestas para personalizar tu experiencia, sin emitir diagnósticos ni etiquetas.</p><Card className="quiet-card"><span>◌</span><div><strong>Una experiencia a tu ritmo</strong><p>Tendremos en cuenta que disfrutas {favoritePastime === "Otro (escribir)" ? (customPastime.trim() || "una actividad personal") : favoritePastime.toLowerCase()} al sugerirte pausas y actividades.</p></div></Card><Button onClick={() => go("home")}>Ir a inicio →</Button></div>
+      <div className="completion-screen"><div className="completion-mark">✓</div><span className="eyebrow">Tu resultado</span><h1>Tu punto de partida está listo</h1><p>Según tus respuestas, te convienen pausas breves, suaves y fáciles de integrar a tu jornada. Empezaremos sin datos inventados y tus indicadores crecerán con el uso.</p><Card className="quiet-card"><span>◌</span><div><strong>Una experiencia a tu ritmo</strong><p>{favoritePastime ? <>Tendremos en cuenta que disfrutas {favoritePastime === "Otro (escribir)" ? (customPastime.trim() || "una actividad personal") : favoritePastime.toLowerCase()} al sugerirte pausas.</> : <>Puedes añadir un hobby más adelante desde tu perfil para afinar tus recomendaciones.</>}</p></div></Card><Button onClick={completeOnboarding}>Ir a inicio →</Button></div>
     );
 
     if (screen === "home") return (
       <AppShell screen={screen} go={go}>
-        <div className="home-topbar"><div><span className="eyebrow">Viernes, 14 de agosto</span><h1>Buenos días, {name.split(" ")[0]}</h1><p>¿Cómo estás hoy?</p></div><div className="top-actions"><button onClick={() => go("agenda")} aria-label="Mi agenda">□</button><button onClick={() => go("notifications")} aria-label="Notificaciones">♢<i /></button></div></div>
-        <Card className="mood-card"><MoodSelector value={mood} onChange={(n) => { setMood(n); showToast("Tu estado de hoy quedó registrado"); }} /><button className="text-link" onClick={() => go("checkin")}>Hacer check-in completo →</button></Card>
+        <div className="home-topbar"><div><span className="eyebrow">Viernes, 14 de agosto</span><h1>{name.trim() ? `Buenos días, ${name.trim().split(" ")[0]}` : "Buenos días"}</h1><p>¿Cómo estás hoy?</p></div><div className="top-actions"><button onClick={() => go("agenda")} aria-label="Mi agenda">□</button><button onClick={() => go("notifications")} aria-label="Notificaciones">♢<i /></button></div></div>
+        <Card className="mood-card"><MoodSelector value={mood} onChange={(n) => { if (mood === 0) updateUsage({ checkins: 1 }); setMood(n); showToast("Tu estado de hoy quedó registrado"); }} /><button className="text-link" onClick={() => go("checkin")}>Hacer check-in completo →</button></Card>
         {remindersOn && nextReminder && <section className="reminder-banner" aria-label="Próximo recordatorio"><span className={`reminder-banner-icon ${nextReminder.kind === "Taller" ? "workshop" : ""}`}>{nextReminder.kind === "Descanso" ? "◷" : "□"}</span><div><small>Próximo recordatorio · {nextReminder.schedule}</small><strong>{nextReminder.title}</strong><p>{nextReminder.kind === "Descanso" ? "Tu pausa estará disponible cuando la necesites." : "Te avisaremos antes para que puedas organizarte."}</p></div><div className="reminder-banner-actions">{nextReminder.kind === "Descanso" && <Button onClick={() => beginActivity(activities[0])}>Iniciar pausa</Button>}<Button secondary onClick={() => showToast("Recordatorio pospuesto 10 minutos")}>Posponer 10 min</Button><button className="text-link" onClick={() => go("notifications")}>Administrar</button></div></section>}
         <div className="home-grid">
-          <Card className="time-card"><div className="section-title"><span className="section-icon">◷</span><div><span className="eyebrow">Encuentra tu pausa</span><h2>¿Cuánto tiempo tienes?</h2></div></div><TimeSelector value={selectedTime} onChange={setSelectedTime} /><h3>¿Qué necesitas ahora?</h3><ChipRow options={needs.slice(0, 5)} value={selectedNeed} onChange={setSelectedNeed} /><Button className="full" onClick={() => go("need-choice")}>Encontrar una pausa <span>→</span></Button><p className="microcopy">Una recomendación breve, según tu momento y disponibilidad.</p></Card>
+          <Card className="home-wellbeing-card"><div className="section-title"><span className="section-icon">◔</span><div><span className="eyebrow">Tu espacio personal</span><h2>Mi bienestar</h2></div></div><p>Los datos empiezan en cero y se actualizan solo cuando usas la app.</p><div className="home-metrics"><div><strong>{energyValue}%</strong><small>Energía</small></div><div><strong>{recoveryValue}%</strong><small>Recuperación</small></div><div><strong>{moodValue}%</strong><small>Ánimo</small></div></div><div className="home-usage"><span>{usageStats.activities} actividades</span><span>{usageStats.checkins} registros</span><span>Pausa habitual: {usualTime}</span></div><Button className="full" onClick={() => go("wellbeing")}>Ver mi bienestar <span>→</span></Button></Card>
           <Card className="recommend-card"><div className="recommend-art"><span className="line-art line-a" /><span className="line-art line-b" /><div className="mini-orb">◌</div><span className="duration-pill">{recommendation.duration} min</span></div><div className="recommend-copy"><span className="eyebrow">Recomendado para ti</span><h2>{recommendation.name === "Desconecta" ? "Respira y reinicia" : recommendation.name}</h2><p>{recommendation.description}</p><div className="activity-meta"><span>{recommendation.category}</span><span>Energía {recommendation.energy.toLowerCase()}</span></div><Button onClick={() => beginActivity(recommendation)}>Comenzar</Button></div></Card>
         </div>
         <div className="section-head"><div><span className="eyebrow">Esta semana</span><h2>Próximos eventos</h2></div><button className="text-link" onClick={() => go("events")}>Ver todos →</button></div>
@@ -391,36 +508,67 @@ export default function Home() {
 
     if (screen === "activities") return (
       <AppShell screen={screen} go={go}><PageHeader eyebrow="Explora a tu ritmo" title="Actividades" description="Pausas breves para distintos momentos de tu jornada." action={<Button secondary onClick={() => go("need-choice")}>Ayúdame a elegir</Button>} />
-        <div className="filter-block"><div className="filter-row"><strong>Duración</strong><ChipRow options={["Todos", "2 min", "5 min", "10 min", "15 min"]} value={activityFilter} onChange={setActivityFilter} /></div><div className="filter-row"><strong>Categoría</strong><ChipRow options={["Relajación", "Movimiento", "Juegos", "Respiración", "Aprendizaje", "Social"]} value={activityFilter} onChange={setActivityFilter} /></div></div>
+        <div className="filter-block"><div className="availability-filter-note"><span>◷</span><p><strong>Actividades para tu disponibilidad: {usualTime}</strong><small>Usamos la respuesta guardada en tu perfil.</small></p><button className="text-link" onClick={() => go("profile")}>Cambiar</button></div><div className="filter-row"><strong>Categoría</strong><ChipRow options={["Todos", "Movimiento", "Juegos", "Respiración"]} value={activityFilter} onChange={setActivityFilter} /></div></div>
         <div className="activity-grid">{filteredActivities.map((item) => <Card className="activity-card" key={item.name}><div className={`activity-art ${item.tone}`}><span>{item.category === "Movimiento" ? "↟" : item.category === "Juegos" ? "◇" : item.category === "Respiración" ? "◌" : "≈"}</span><i>{item.duration} min</i></div><span className="category-label">{item.category}</span><h3>{item.name}</h3><p>{item.description}</p><div className="energy"><span>Nivel de energía</span><strong>{item.energy}</strong></div><Button onClick={() => beginActivity(item)}>Comenzar →</Button></Card>)}</div>
       </AppShell>
     );
 
     if (screen === "activity-run") {
-      const activeSteps = ["Mueve los hombros", "Estira los brazos", "Respira profundamente", "Levántate y camina", "Regresa lentamente"];
+      const activeSteps = activity.name === "Estiramiento express"
+        ? ["Suelta el cuello", "Abre los hombros", "Estira los brazos", "Vuelve al centro"]
+        : ["Mueve los hombros", "Estira los brazos", "Respira profundamente", "Levántate y camina", "Regresa lentamente"];
+      const activeInstructions = activity.name === "Estiramiento express"
+        ? ["Inclina la cabeza suavemente hacia cada lado.", "Lleva los hombros atrás y abre el pecho sin forzar.", "Eleva un brazo, luego el otro, respirando con calma.", "Baja los brazos y nota cómo se siente tu postura."]
+        : ["Rota suavemente hacia atrás, sin forzar.", "Lleva ambos brazos al frente y luego arriba.", "Inhala por la nariz y exhala lentamente.", "Si es posible, da unos pasos tranquilos.", "Vuelve a tu postura y nota cómo te sientes."];
       const isMovement = activity.category === "Movimiento";
-      const isGame = activity.name === "Desconecta" || activity.name === "Reto de atención";
+      const disconnect = disconnectLevels[gameLevel - 1];
+      const attentionSequence = attentionSequences[attentionLevel - 1];
+      const breathPhase = breathElapsed >= 32 ? "Completado" : breathElapsed % 8 < 4 ? "Inhala" : "Exhala";
+      const breathSeconds = breathElapsed >= 32 ? 0 : 4 - (breathElapsed % 4);
+      const breathProgress = Math.min(100, (breathElapsed / 32) * 100);
+      const pickAttentionShape = (shape: string) => {
+        const expected = attentionSequence[attentionInput.length];
+        if (shape !== expected) {
+          setAttentionInput([]);
+          setAttentionShowing(true);
+          showToast("La secuencia fue distinta. Obsérvala otra vez con calma.");
+          return;
+        }
+        const next = [...attentionInput, shape];
+        setAttentionInput(next);
+        if (next.length === attentionSequence.length) {
+          if (attentionLevel === attentionSequences.length) window.setTimeout(finishActivity, 450);
+          else {
+            setAttentionLevel((level) => level + 1);
+            setAttentionInput([]);
+            setAttentionShowing(true);
+            showToast("¡Bien! Pasas al siguiente nivel.");
+          }
+        }
+      };
       return <AppShell screen="activities" go={go}><div className="activity-experience"><div className="activity-run-top"><button className="back-link" onClick={() => go("activities")}>× Salir</button><span>{activity.name}</span><small>◷ {activity.duration}:00</small></div>
-        {isGame ? <div className="game-panel"><span className="eyebrow">Mini actividad</span><h1>{activity.name}</h1><p>{activity.name === "Desconecta" ? "Encuentra los tres símbolos ◇ entre las formas. Sin prisa." : "Observa la secuencia y repítela: ○ · △ · □ · ○"}</p><div className="game-status"><span>Encontrados <strong>{found.length}/3</strong></span><span>Tiempo <strong>01:{42 - found.length * 8}</strong></span></div><div className="find-grid">{["○", "△", "◇", "□", "○", "△", "□", "◇", "○", "△", "◇", "□"].map((shape, i) => <button key={i} className={found.includes(i) ? "found" : ""} onClick={() => { if (shape === "◇" && !found.includes(i)) { const next = [...found, i]; setFound(next); if (next.length === 3) window.setTimeout(finishActivity, 500); } }}>{found.includes(i) ? "✓" : shape}</button>)}</div><small className="gentle-note">Este ejercicio no evalúa tu desempeño.</small></div>
-        : isMovement ? <div className="guided-panel"><span className="eyebrow">Pausa activa · paso {activityStep + 1} de 5</span><h1>{activeSteps[activityStep]}</h1><div className="movement-visual"><div className={`move-figure step-${activityStep}`}><i className="head" /><i className="body" /><i className="arm left" /><i className="arm right" /></div><span className="motion-line m1" /><span className="motion-line m2" /></div><p>{["Rota suavemente hacia atrás, sin forzar.", "Lleva ambos brazos al frente y luego arriba.", "Inhala por la nariz y exhala lentamente.", "Si es posible, da unos pasos tranquilos.", "Vuelve a tu postura y nota cómo te sientes."][activityStep]}</p><div className="guided-progress"><div><i style={{ width: `${(activityStep + 1) * 20}%` }} /></div><span>{activityStep + 1} / 5</span></div><Button onClick={() => activityStep === 4 ? finishActivity() : setActivityStep((n) => n + 1)}>{activityStep === 4 ? "Finalizar pausa" : "Siguiente paso →"}</Button></div>
-        : <div className="breathing-panel"><span className="eyebrow">Respiración guiada</span><h1>{activity.name}</h1><p>Sigue el ritmo del círculo. Respira sin esfuerzo.</p><div className="breathing-orb"><span>Inhala</span><small>4 segundos</small></div><div className="breath-count"><i className="active" /><i /><i /><i /></div><Button secondary onClick={finishActivity}>Completar pausa</Button></div>}
+        {activity.name === "Desconecta" ? <div className="game-panel"><span className="eyebrow">Nivel {gameLevel} de {disconnectLevels.length}</span><h1>Desconecta</h1><p>Encuentra los tres símbolos <strong>{disconnect.target}</strong>. Sin prisa y sin puntuación.</p><div className="game-status"><span>Encontrados <strong>{found.length}/3</strong></span><span>Progreso <strong>{Math.round(((gameLevel - 1) + found.length / 3) * 20)}%</strong></span></div><div className="find-grid">{disconnect.shapes.map((shape, i) => <button key={`${gameLevel}-${i}`} className={found.includes(i) ? "found" : ""} onClick={() => { if (shape !== disconnect.target) { showToast("Prueba con el símbolo indicado arriba."); return; } if (!found.includes(i)) { const next = [...found, i]; setFound(next); if (next.length === 3) { if (gameLevel === disconnectLevels.length) window.setTimeout(finishActivity, 450); else window.setTimeout(() => { setGameLevel((level) => level + 1); setFound([]); }, 450); } } }}>{found.includes(i) ? "✓" : shape}</button>)}</div><div className="level-progress"><i style={{ width: `${((gameLevel - 1) + found.length / 3) * 20}%` }} /></div><small className="gentle-note">Cinco niveles breves para cambiar de foco.</small></div>
+        : activity.name === "Reto de atención" ? <div className="game-panel attention-panel"><span className="eyebrow">Reto de memoria · nivel {attentionLevel} de {attentionSequences.length}</span><h1>Reto de atención</h1><p>Memoriza la secuencia y luego tócala en el mismo orden.</p>{attentionShowing ? <><div className="sequence-display" aria-label="Secuencia a memorizar">{attentionSequence.map((shape, index) => <span key={`${shape}-${index}`}>{shape}</span>)}</div><Button onClick={() => { setAttentionShowing(false); setAttentionInput([]); }}>Ya la memoricé</Button></> : <><div className="sequence-answer" aria-live="polite">{attentionSequence.map((_, index) => <span key={index}>{attentionInput[index] || "·"}</span>)}</div><div className="attention-pad">{["○", "△", "□", "◇"].map((shape) => <button key={shape} onClick={() => pickAttentionShape(shape)}>{shape}</button>)}</div><button className="text-link" onClick={() => { setAttentionInput([]); setAttentionShowing(true); }}>Ver secuencia otra vez</button></>}<small className="gentle-note">No hay tiempo límite. Si te equivocas, simplemente vuelves a mirar.</small></div>
+        : activity.name === "Jardín de calma" ? <div className="game-panel calm-panel"><span className="eyebrow">Mini jardín sin prisa</span><h1>Jardín de calma</h1><p>Toca cada piedra para convertirla en una flor. Respira con naturalidad y observa cómo aparece el jardín.</p><div className="calm-garden">{["≈", "○", "◇", "≈", "○", "◇"].map((shape, index) => <button key={index} className={calmFound.includes(index) ? "bloomed" : ""} aria-label={calmFound.includes(index) ? `Flor ${index + 1}` : `Hacer florecer piedra ${index + 1}`} onClick={() => { if (calmFound.includes(index)) return; const next = [...calmFound, index]; setCalmFound(next); if (next.length === 6) window.setTimeout(finishActivity, 650); }}><span>{calmFound.includes(index) ? "✿" : shape}</span></button>)}</div><div className="level-progress"><i style={{ width: `${(calmFound.length / 6) * 100}%` }} /></div><small className="gentle-note">{calmFound.length}/6 flores · Sin puntaje ni errores.</small></div>
+        : isMovement ? <div className="guided-panel"><span className="eyebrow">{activity.name} · paso {activityStep + 1} de {activeSteps.length}</span><h1>{activeSteps[activityStep]}</h1><div className="movement-visual"><div className={`move-figure step-${activityStep}`}><i className="head" /><i className="body" /><i className="arm left" /><i className="arm right" /></div><span className="motion-line m1" /><span className="motion-line m2" /></div><p>{activeInstructions[activityStep]}</p><div className="guided-progress"><div><i style={{ width: `${((activityStep + 1) / activeSteps.length) * 100}%` }} /></div><span>{activityStep + 1} / {activeSteps.length}</span></div><div className="guided-actions"><Button secondary disabled={activityStep === 0} onClick={() => setActivityStep((step) => Math.max(0, step - 1))}>← Movimiento anterior</Button><Button onClick={() => activityStep === activeSteps.length - 1 ? finishActivity() : setActivityStep((step) => step + 1)}>{activityStep === activeSteps.length - 1 ? "Finalizar pausa" : "Siguiente movimiento →"}</Button></div></div>
+        : <div className="breathing-panel"><span className="eyebrow">Respiración guiada · ciclo {Math.min(4, Math.floor(breathElapsed / 8) + 1)} de 4</span><h1>{activity.name}</h1><p>Sigue el ritmo del círculo. Respira sin esfuerzo.</p><div key={`${Math.floor(breathElapsed / 4)}-${breathPhase}`} className={`breathing-orb ${breathPhase === "Inhala" ? "inhale" : breathPhase === "Exhala" ? "exhale" : "complete"}`}><span>{breathPhase}</span><strong>{breathSeconds}</strong><small>{breathPhase === "Completado" ? "Pausa terminada" : "segundos"}</small></div><div className="breathing-progress"><div><i style={{ width: `${breathProgress}%` }} /></div><span>{Math.round(breathProgress)}%</span></div><Button disabled={breathElapsed < 32} onClick={finishActivity}>{breathElapsed < 32 ? "Sigue el ritmo…" : "Completar pausa"}</Button></div>}
       </div></AppShell>;
     }
 
     if (screen === "activity-result") return (
-      <AppShell screen="activities" go={go}><div className="result-page"><div className="completion-mark">✓</div><span className="eyebrow">Actividad completada</span><h1>Tomaste unos minutos para ti</h1><p>Hiciste una pausa breve para cambiar de foco y recuperar un poco de espacio.</p><div className="pause-registered"><span>◷</span><div><strong>1 pausa registrada</strong><small>{activity.name} · {activity.duration} min</small></div></div><Card className="feedback-card"><h2>¿Cómo te ayudó esta pausa?</h2><div className="feedback-options">{["Mucho", "Un poco", "Nada"].map((x) => <button className={feedback === x ? "selected" : ""} key={x} onClick={() => setFeedback(x)}><span>{x === "Mucho" ? "◡" : x === "Un poco" ? "—" : "⌢"}</span>{x}</button>)}</div><h3>¿La volverías a hacer?</h3><div className="button-row compact"><Button secondary onClick={() => showToast("Gracias por tu respuesta")}>Sí</Button><Button secondary onClick={() => showToast("Buscaremos otras opciones")}>No</Button></div></Card><div className="button-row"><Button onClick={() => go("home")}>Volver al inicio</Button><Button ghost onClick={() => go("activities")}>Explorar actividades</Button></div></div></AppShell>
+      <AppShell screen="activities" go={go}><div className="result-page"><div className="completion-mark">✓</div><span className="eyebrow">Actividad completada</span><h1>Tomaste unos minutos para ti</h1><p>Hiciste una pausa breve para cambiar de foco y recuperar un poco de espacio.</p><div className="pause-registered"><span>◷</span><div><strong>Pausa registrada</strong><small>{activity.name} · {activity.duration} min</small></div></div>{!feedbackCompleted ? <Card className="feedback-card"><span className="eyebrow">Solo te lo preguntaremos esta primera vez</span><h2>¿Cómo te ayudó esta pausa?</h2><div className="feedback-options">{["Mucho", "Un poco", "Nada"].map((x) => <button className={feedback === x ? "selected" : ""} key={x} onClick={() => setFeedback(x)}><span>{x === "Mucho" ? "◡" : x === "Un poco" ? "—" : "⌢"}</span>{x}</button>)}</div><h3>¿La volverías a hacer?</h3><div className="button-row compact"><Button secondary disabled={!feedback} onClick={() => finishFirstFeedback(true)}>Sí</Button><Button secondary disabled={!feedback} onClick={() => finishFirstFeedback(false)}>No</Button></div></Card> : <div className="feedback-saved"><span>✓</span><p><strong>Tu pausa quedó guardada.</strong> La encuesta inicial ya fue respondida y no volverá a interrumpirte.</p></div>}<div className="button-row"><Button onClick={() => go("home")}>Volver al inicio</Button><Button ghost onClick={() => go("activities")}>Explorar actividades</Button></div></div></AppShell>
     );
 
     if (screen === "wellbeing") return (
       <AppShell screen={screen} go={go}><PageHeader eyebrow="Tu espacio personal" title="Mi bienestar" description="Una mirada privada a tus registros y momentos de recuperación." action={<Button onClick={() => go("checkin")}>Hacer check-in</Button>} />
-        <div className="wellbeing-summary"><Card className="metric-card wide"><div className="card-head"><div><span className="eyebrow">Esta semana</span><h2>Tu resumen</h2></div><span className="fiction-badge">Datos ficticios</span></div><div className="rings"><MetricRing value={72} label="Energía" /><MetricRing value={68} label="Recuperación" color="#547da0" /><MetricRing value={76} label="Estado de ánimo" color="#b9785d" /></div></Card><Card className="trend-card"><span className="trend-up">↗</span><span className="eyebrow">Tendencia reciente</span><h2>Tu energía ha mejorado durante los últimos 7 días</h2><p>Las pausas cortas de la mañana parecen resultarte más útiles.</p></Card></div>
-        <div className="wellbeing-grid"><Card className="chart-card"><div className="card-head"><div><span className="eyebrow">Últimos 7 días</span><h2>Energía y recuperación</h2></div><select aria-label="Periodo"><option>Esta semana</option></select></div><MiniBars values={[48, 58, 54, 70, 62, 78, 72]} /><div className="chart-legend"><span><i className="teal-dot" />Energía</span><span><i className="blue-dot" />Recuperación</span></div></Card><Card><span className="eyebrow">Tu participación</span><h2>5 actividades</h2><div className="participation-list"><div><span>Respiración</span><i><b style={{ width: "80%" }} /></i><strong>2</strong></div><div><span>Movimiento</span><i><b style={{ width: "60%" }} /></i><strong>2</strong></div><div><span>Juegos</span><i><b style={{ width: "35%" }} /></i><strong>1</strong></div></div><button className="text-link" onClick={() => go("activities")}>Ver historial completo →</button></Card></div>
+        <div className="wellbeing-summary"><Card className="metric-card wide"><div className="card-head"><div><span className="eyebrow">Esta semana</span><h2>Tu resumen</h2></div><span className="live-data-badge">Datos de tu uso</span></div><div className="rings"><MetricRing value={energyValue} label="Energía" /><MetricRing value={recoveryValue} label="Recuperación" color="#547da0" /><MetricRing value={moodValue} label="Estado de ánimo" color="#b9785d" /></div></Card><Card className="trend-card"><span className={hasUsage ? "trend-up" : "trend-flat"}>{hasUsage ? "↗" : "○"}</span><span className="eyebrow">Tendencia reciente</span><h2>{hasUsage ? "Tu resumen ya empezó a tomar forma" : "Aún no hay actividad registrada"}</h2><p>{hasUsage ? "Cada pausa y check-in actualiza esta vista con tus propios datos." : "Completa una actividad o un check-in para comenzar. Todos los indicadores parten de cero."}</p></Card></div>
+        <div className="wellbeing-grid"><Card className="chart-card"><div className="card-head"><div><span className="eyebrow">Últimos 7 días</span><h2>Energía y recuperación</h2></div><select aria-label="Periodo"><option>Esta semana</option></select></div><MiniBars values={weeklyBars} /><div className="chart-legend"><span><i className="teal-dot" />Registros propios</span></div></Card><Card><span className="eyebrow">Tu participación</span><h2>{usageStats.activities} actividades</h2><div className="participation-list"><div><span>Respiración</span><i><b style={{ width: `${usageStats.activities ? (usageStats.respiration / usageStats.activities) * 100 : 0}%` }} /></i><strong>{usageStats.respiration}</strong></div><div><span>Movimiento</span><i><b style={{ width: `${usageStats.activities ? (usageStats.movement / usageStats.activities) * 100 : 0}%` }} /></i><strong>{usageStats.movement}</strong></div><div><span>Juegos</span><i><b style={{ width: `${usageStats.activities ? (usageStats.games / usageStats.activities) * 100 : 0}%` }} /></i><strong>{usageStats.games}</strong></div></div><button className="text-link" onClick={() => go("activities")}>Explorar actividades →</button></Card></div>
         <Card className="support-callout"><span>♡</span><div><h3>Si necesitas apoyo adicional</h3><p>Puedes consultar los canales y recursos disponibles en el INSN. Pedir apoyo también es parte del bienestar.</p></div><Button secondary onClick={() => go("support")}>Ver recursos de apoyo</Button></Card>
       </AppShell>
     );
 
     if (screen === "checkin") return (
-      <AppShell screen="wellbeing" go={go}><div className="checkin-page"><button className="back-link" onClick={back}>← Volver</button><span className="eyebrow">Check-in diario · 1 minuto</span><h1>¿Cómo estás hoy?</h1><p>Responde según cómo te sientes ahora. No hay respuestas correctas.</p><Card>{["¿Cómo está tu energía?", "¿Qué tan agotado/a te sientes?", "¿Cómo está tu ánimo?"].map((q, i) => <div className="checkin-question" key={q}><div><span>{["✦", "≈", "◡"][i]}</span><strong>{q}</strong></div><Scale value={checkin[i]} onChange={(n) => setCheckin((items) => items.map((v, ix) => ix === i ? n : v))} /></div>)}</Card><Button onClick={() => go("checkin-result")}>Guardar check-in →</Button><small>Tus registros personales son privados.</small></div></AppShell>
+      <AppShell screen="wellbeing" go={go}><div className="checkin-page"><button className="back-link" onClick={back}>← Volver</button><span className="eyebrow">Check-in diario · 1 minuto</span><h1>¿Cómo estás hoy?</h1><p>Responde según cómo te sientes ahora. No hay respuestas correctas.</p><Card>{["¿Cómo está tu energía?", "¿Qué tan agotado/a te sientes?", "¿Cómo está tu ánimo?"].map((q, i) => <div className="checkin-question" key={q}><div><span>{["✦", "≈", "◡"][i]}</span><strong>{q}</strong></div><Scale value={checkin[i]} onChange={(n) => setCheckin((items) => items.map((v, ix) => ix === i ? n : v))} /></div>)}</Card><Button onClick={recordCheckin}>Guardar check-in →</Button><small>Tus registros personales son privados.</small></div></AppShell>
     );
 
     if (screen === "checkin-result") return (
@@ -430,7 +578,7 @@ export default function Home() {
     if (screen === "events") return (
       <AppShell screen={screen} go={go}><PageHeader eyebrow="Conecta y participa" title="Eventos" description="Actividades de bienestar para compartir durante la jornada." action={<Button secondary onClick={() => go("agenda")}>□ Mi agenda</Button>} /><ChipRow options={["Todos", "Hoy", "Esta semana", "Mi área"]} value={eventFilter} onChange={setEventFilter} />
         <div className="featured-event"><div><span className="eyebrow">Evento destacado</span><h2>Semana del bienestar</h2><p>Una jornada con pausas activas, espacios de orientación y actividades para toda la comunidad INSN.</p><div className="detail-pills"><span>21 AGO</span><span>Todo el día</span><span>Hall principal</span></div><Button onClick={() => { setSelectedEvent(events[2]); go("event-detail"); }}>Ver detalles →</Button></div><div className="featured-shapes"><i /><i /><i /></div></div>
-        <div className="event-list">{events.map((event) => <Card className="event-card" key={event.id}><span className="event-date large"><strong>{event.date.split(" ")[0]}</strong><small>{event.date.split(" ")[1]}</small></span><div className="event-main"><span className="category-label">{event.area}</span><h3>{event.title}</h3><p>{event.day} · {event.time} · {event.duration}</p><small>{event.place} · {event.mode}</small></div><div className="event-actions"><Button secondary onClick={() => { setSelectedEvent(event); go("event-detail"); }}>Ver detalles</Button><Button ghost onClick={() => { setRsvp((items) => items.includes(event.id) ? items : [...items, event.id]); showToast("Evento agregado a tu agenda"); }}>{rsvp.includes(event.id) ? "✓ Me interesa" : "Me interesa"}</Button></div></Card>)}</div>
+        <div className="event-list">{events.map((event) => <Card className="event-card" key={event.id}><span className="event-date large"><strong>{event.date.split(" ")[0]}</strong><small>{event.date.split(" ")[1]}</small></span><div className="event-main"><span className="category-label">{event.area}</span><h3>{event.title}</h3><p>{event.day} · {event.time} · {event.duration}</p><small>{event.place} · {event.mode}</small></div><div className="event-actions"><Button secondary onClick={() => { setSelectedEvent(event); go("event-detail"); }}>Ver detalles</Button><Button ghost onClick={() => { if (!rsvp.includes(event.id)) updateUsage({ events: 1 }); setRsvp((items) => items.includes(event.id) ? items : [...items, event.id]); showToast("Evento agregado a tu agenda"); }}>{rsvp.includes(event.id) ? "✓ Me interesa" : "Me interesa"}</Button></div></Card>)}</div>
       </AppShell>
     );
 
@@ -443,7 +591,7 @@ export default function Home() {
     );
 
     if (screen === "profile") return (
-      <AppShell screen={screen} go={go}><PageHeader eyebrow="Tu cuenta" title="Perfil y preferencias" description="Ajusta la experiencia a tu jornada." /><div className="profile-layout"><Card className="profile-card"><div className="profile-avatar">AT</div><h2>{name}</h2><p>{staffType} · {area}</p><span className="fiction-badge">Perfil ficticio</span><div className="profile-facts"><div><small>Horario</small><strong>{shift}</strong></div><div><small>Pausa habitual</small><strong>{usualTime}</strong></div></div><Button secondary className="full" onClick={() => showToast("Edición de perfil habilitada")}>Editar información</Button></Card><div className="settings-stack"><Card><h2>Tiempo disponible</h2><p>¿Cuánto tiempo sueles tener disponible?</p><TimeSelector value={selectedTime} onChange={setSelectedTime} /><Button onClick={() => showToast("Disponibilidad actualizada")}>Guardar</Button></Card><Card><h2>Preferencias de actividades</h2><div className="chips preferences">{interests.map((x) => <button key={x} className={selectedInterests.includes(x) ? "selected" : ""} onClick={() => setSelectedInterests((items) => items.includes(x) ? items.filter((v) => v !== x) : [...items, x])}>{selectedInterests.includes(x) ? "✓ " : "+ "}{x}</button>)}</div></Card><Card className="settings-list"><button onClick={() => go("notifications")}><span>♢</span><div><strong>Notificaciones y recordatorios</strong><small>Configura cuándo recibir avisos</small></div><i>→</i></button><button onClick={() => go("privacy")}><span>♢</span><div><strong>Privacidad y mis datos</strong><small>Conoce cómo se usa tu información</small></div><i>→</i></button><button onClick={() => go("support")}><span>?</span><div><strong>Recursos de apoyo</strong><small>Canales institucionales disponibles</small></div><i>→</i></button></Card><button className="admin-switch" onClick={() => go("admin-login")}>Acceder al panel institucional →</button></div></div></AppShell>
+      <AppShell screen={screen} go={go}><PageHeader eyebrow="Tu cuenta" title="Perfil y preferencias" description="Ajusta la experiencia a tu jornada." /><div className="profile-layout"><Card className="profile-card"><div className="profile-avatar">{name.trim() ? name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() : "TU"}</div><h2>{name.trim() || "Tu perfil"}</h2><p>{staffType} · {area}</p><div className="profile-facts"><div><small>Horario</small><strong>{shift}</strong></div><div><small>Pausa habitual</small><strong>{usualTime}</strong></div></div><Button secondary className="full" onClick={() => go("profile-setup")}>Editar información</Button></Card><div className="settings-stack"><Card><h2>Tiempo libre habitual</h2><p>Esta es la respuesta guardada. Solo cambia si tú la actualizas.</p><ChipRow options={["2-5 min", "5-10 min", "10-20 min", "Más de 20 min", "Es variable"]} value={usualTime} onChange={setUsualTime} /><Button onClick={() => { persistProfile(usualTime); setSelectedTime(usualTime === "2-5 min" ? "2 min" : usualTime === "10-20 min" ? "10 min" : usualTime === "Más de 20 min" ? "20+ min" : "5 min"); showToast("Disponibilidad actualizada"); }}>Guardar cambio</Button></Card><Card><h2>Preferencias de actividades</h2><div className="chips preferences">{interests.map((x) => <button key={x} className={selectedInterests.includes(x) ? "selected" : ""} onClick={() => setSelectedInterests((items) => items.includes(x) ? items.filter((v) => v !== x) : [...items, x])}>{selectedInterests.includes(x) ? "✓ " : "+ "}{x}</button>)}</div></Card><Card className="settings-list"><button onClick={() => go("notifications")}><span>♢</span><div><strong>Notificaciones y recordatorios</strong><small>Configura cuándo recibir avisos</small></div><i>→</i></button><button onClick={() => go("privacy")}><span>♢</span><div><strong>Privacidad y mis datos</strong><small>Conoce cómo se usa tu información</small></div><i>→</i></button><button onClick={() => go("support")}><span>?</span><div><strong>Recursos de apoyo</strong><small>Canales institucionales disponibles</small></div><i>→</i></button></Card><button className="admin-switch" onClick={() => go("admin-login")}>Acceder al panel institucional →</button></div></div></AppShell>
     );
 
     if (screen === "notifications") return (
@@ -468,19 +616,19 @@ export default function Home() {
     );
 
     if (screen === "admin-dashboard") return (
-      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Viernes, 14 de agosto" title="Resumen de bienestar" description="Indicadores institucionales agregados · Datos ficticios" action={<div className="admin-header-actions"><select><option>Últimos 30 días</option></select><button aria-label="Notificaciones">♢</button></div>} /><div className="metric-grid">{[["Participación", "72%", "+6%", "◎"], ["Actividades realizadas", "1,245", "+12%", "△"], ["Pausas registradas", "856", "+9%", "◷"], ["Eventos", "18", "3 próximos", "□"]].map(([label, value, change, icon]) => <Card className="admin-metric" key={label}><div><span>{label}</span><strong>{value}</strong><small>{change} <i>vs. periodo anterior</i></small></div><b>{icon}</b></Card>)}</div>
-        <div className="admin-chart-grid"><Card className="line-chart-card"><div className="card-head"><div><span className="eyebrow">Últimos 30 días</span><h2>Tendencia de bienestar</h2></div><div className="chart-legend"><span><i className="teal-dot" />Bienestar</span><span><i className="blue-dot" />Recuperación</span></div></div><div className="line-chart"><div className="grid-lines"><i /><i /><i /><i /></div><div className="trend-columns">{[58, 64, 61, 68, 66, 72, 70, 75, 73, 78, 76, 81].map((v, i) => <span key={i} style={{ height: `${v}%` }}><i /></span>)}</div><div className="axis"><span>15 jul</span><span>22 jul</span><span>29 jul</span><span>5 ago</span><span>14 ago</span></div></div></Card><Card><div className="card-head"><div><span className="eyebrow">Cobertura</span><h2>Participación por área</h2></div><button className="text-link" onClick={() => go("admin-areas")}>Ver áreas</button></div><div className="area-bars">{[["Emergencia", 84], ["Hospitalización", 78], ["Administración", 71], ["Consultorios", 66], ["UCI", 58]].map(([label, value]) => <div key={label}><span>{label}</span><i><b style={{ width: `${value}%` }} /></i><strong>{value}%</strong></div>)}</div></Card></div>
-        <div className="admin-lower"><Card><div className="card-head"><h2>Señales recientes</h2><button className="text-link" onClick={() => go("admin-trends")}>Ver tendencias →</button></div><div className="insight-list"><div className="positive"><span>↗</span><p><strong>Recuperación en Hospitalización</strong>Mejora de 8 puntos en las últimas dos semanas.</p></div><div className="watch"><span>◔</span><p><strong>Cambios en energía · UCI</strong>Conviene revisar recursos y momentos de pausa disponibles.</p></div><div className="neutral"><span>◎</span><p><strong>Mayor participación</strong>Emergencia registró 126 actividades esta semana.</p></div></div></Card><Card><div className="card-head"><h2>Próximos eventos</h2><button className="text-link" onClick={() => go("admin-events")}>Gestionar →</button></div>{events.slice(0, 3).map((e) => <div className="admin-event-mini" key={e.id}><span className="event-date"><strong>{e.date.split(" ")[0]}</strong><small>{e.date.split(" ")[1]}</small></span><div><strong>{e.title}</strong><small>{e.time} · {e.duration}</small></div></div>)}</Card></div>
+      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Viernes, 14 de agosto" title="Resumen de bienestar" description="Indicadores agregados generados por el uso de esta versión" action={<div className="admin-header-actions"><select><option>Últimos 30 días</option></select><button aria-label="Notificaciones">♢</button></div>} /><div className="metric-grid">{[["Participación", `${participationValue}%`, "Actual", "◎"], ["Actividades realizadas", String(usageStats.activities), "Actual", "△"], ["Pausas registradas", String(usageStats.pauses), "Actual", "◷"], ["Eventos", String(usageStats.events), "Actual", "□"]].map(([label, value, change, icon]) => <Card className="admin-metric" key={label}><div><span>{label}</span><strong>{value}</strong><small>{change} <i>en este dispositivo</i></small></div><b>{icon}</b></Card>)}</div>
+        <div className="admin-chart-grid"><Card className="line-chart-card"><div className="card-head"><div><span className="eyebrow">Últimos 30 días</span><h2>Tendencia de bienestar</h2></div><div className="chart-legend"><span><i className="teal-dot" />Bienestar</span><span><i className="blue-dot" />Recuperación</span></div></div><div className="line-chart"><div className="grid-lines"><i /><i /><i /><i /></div><div className="trend-columns">{adminTrendValues.map((v, i) => <span key={i} style={{ height: `${v}%` }}><i /></span>)}</div><div className="axis"><span>15 jul</span><span>22 jul</span><span>29 jul</span><span>5 ago</span><span>14 ago</span></div></div></Card><Card><div className="card-head"><div><span className="eyebrow">Cobertura</span><h2>Participación por área</h2></div><button className="text-link" onClick={() => go("admin-areas")}>Ver áreas</button></div><div className="area-bars">{areaUsage.map(([label, value]) => <div key={label}><span>{label}</span><i><b style={{ width: `${value}%` }} /></i><strong>{value}%</strong></div>)}</div></Card></div>
+        <div className="admin-lower"><Card><div className="card-head"><h2>Señales recientes</h2><button className="text-link" onClick={() => go("admin-trends")}>Ver tendencias →</button></div>{hasUsage ? <div className="insight-list"><div className="positive"><span>↗</span><p><strong>Actividad registrada</strong>Los indicadores ya reflejan interacciones realizadas en esta versión.</p></div><div className="neutral"><span>◎</span><p><strong>Participación actual</strong>{usageStats.activities} actividades y {usageStats.checkins} registros personales.</p></div></div> : <div className="empty-data"><span>○</span><strong>Sin datos todavía</strong><p>Las señales aparecerán cuando se registren actividades, eventos o check-ins.</p></div>}</Card><Card><div className="card-head"><h2>Próximos eventos</h2><button className="text-link" onClick={() => go("admin-events")}>Gestionar →</button></div>{events.slice(0, 3).map((e) => <div className="admin-event-mini" key={e.id}><span className="event-date"><strong>{e.date.split(" ")[0]}</strong><small>{e.date.split(" ")[1]}</small></span><div><strong>{e.title}</strong><small>{e.time} · {e.duration}</small></div></div>)}</Card></div>
         <div className="aggregate-banner"><span>♢</span><p><strong>Privacidad por diseño.</strong> Los datos se presentan de forma agregada para proteger la privacidad de los trabajadores.</p></div>
       </AdminShell>
     );
 
     if (screen === "admin-trends") return (
-      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Datos agregados" title="Tendencias" description="Variación de indicadores de bienestar sin exponer información individual." action={<select className="period-select"><option>Últimos 30 días</option><option>Últimos 90 días</option></select>} /><div className="admin-chart-grid"><Card className="line-chart-card"><h2>Variación de indicadores</h2><p>Energía, recuperación y estado de ánimo</p><div className="multi-trend">{[70, 63, 75, 68, 80, 76, 84, 79, 88].map((v, i) => <span key={i}><i style={{ height: `${v}%` }} /><b style={{ height: `${Math.max(30, v - 12)}%` }} /></span>)}</div><div className="chart-legend"><span><i className="teal-dot" />Energía</span><span><i className="blue-dot" />Recuperación</span></div></Card><Card className="trend-summary"><span className="trend-up">↗</span><h3>Recuperación general</h3><strong>+7.4%</strong><p>Variación positiva frente al periodo anterior.</p><hr /><span className="trend-flat">→</span><h3>Estado de ánimo</h3><strong>Estable</strong><p>Sin cambios relevantes durante la última semana.</p></Card></div><div className="three-columns"><Card><span className="eyebrow">Mayor participación</span><h2>Áreas destacadas</h2>{[["Emergencia", "84%"], ["Hospitalización", "78%"], ["Administración", "71%"]].map(([a, v], i) => <div className="rank-row" key={a}><span>{i + 1}</span><strong>{a}</strong><b>{v}</b></div>)}</Card><Card><span className="eyebrow">Cambios recientes</span><h2>Áreas para observar</h2><div className="area-insight"><span className="watch">◔</span><div><strong>UCI</strong><p>Descenso moderado en energía agregada.</p></div></div><div className="area-insight"><span className="positive">↗</span><div><strong>Consultorios</strong><p>Mayor uso de pausas de 5 minutos.</p></div></div></Card><Card className="privacy-admin-card"><span>♢</span><h2>Lectura responsable</h2><p>Estos indicadores ayudan a orientar acciones institucionales. No representan diagnósticos ni permiten identificar a una persona.</p></Card></div></AdminShell>
+      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Datos agregados" title="Tendencias" description="Variación de indicadores de bienestar sin exponer información individual." action={<select className="period-select"><option>Últimos 30 días</option><option>Últimos 90 días</option></select>} /><div className="admin-chart-grid"><Card className="line-chart-card"><h2>Variación de indicadores</h2><p>Energía, recuperación y estado de ánimo</p><div className="multi-trend">{adminTrendValues.map((v, i) => <span key={i}><i style={{ height: `${v}%` }} /><b style={{ height: `${v ? Math.max(0, v - 12) : 0}%` }} /></span>)}</div><div className="chart-legend"><span><i className="teal-dot" />Energía</span><span><i className="blue-dot" />Recuperación</span></div></Card><Card className="trend-summary"><span className={hasUsage ? "trend-up" : "trend-flat"}>{hasUsage ? "↗" : "○"}</span><h3>Recuperación general</h3><strong>{recoveryValue}%</strong><p>{hasUsage ? "Calculada a partir del uso registrado." : "Aún no hay datos para comparar."}</p><hr /><span className="trend-flat">→</span><h3>Estado de ánimo</h3><strong>{moodValue}%</strong><p>{hasUsage ? "Basado en los registros personales realizados." : "Comienza en cero hasta el primer registro."}</p></Card></div><div className="three-columns"><Card><span className="eyebrow">Participación actual</span><h2>Áreas</h2>{areaUsage.slice(0, 3).map(([label, value], i) => <div className="rank-row" key={label}><span>{i + 1}</span><strong>{label}</strong><b>{value}%</b></div>)}</Card><Card><span className="eyebrow">Cambios recientes</span><h2>Áreas para observar</h2><div className="empty-data"><span>○</span><strong>{hasUsage ? "Registro en curso" : "Sin datos todavía"}</strong><p>{hasUsage ? `La actividad actual corresponde al área ${area}.` : "Los hallazgos aparecerán únicamente después de registrar uso real."}</p></div></Card><Card className="privacy-admin-card"><span>♢</span><h2>Lectura responsable</h2><p>Estos indicadores ayudan a orientar acciones institucionales. No representan diagnósticos ni permiten identificar a una persona.</p></Card></div></AdminShell>
     );
 
     if (screen === "admin-areas") return (
-      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Vista institucional" title="Áreas" description="Participación y tendencias agregadas por equipo." /><Card className="area-table-card"><div className="table-toolbar"><ChipRow options={["Todas", "Asistencial", "Administrativo"]} value="Todas" onChange={() => {}} /><input placeholder="Buscar área" aria-label="Buscar área" /></div><div className="area-table"><div className="table-row head"><span>Área</span><span>Participación</span><span>Actividades</span><span>Bienestar</span><span>Tendencia</span></div>{[["Emergencia", "84%", "286", "78", "+6%"], ["Hospitalización", "78%", "254", "75", "+8%"], ["Administración", "71%", "196", "73", "+2%"], ["Consultorios", "66%", "184", "71", "+4%"], ["UCI", "58%", "142", "67", "-3%"]].map((row) => <div className="table-row" key={row[0]}>{row.map((x, i) => <span key={i} className={i === 4 ? (x.startsWith("-") ? "negative" : "positive-text") : ""}>{i === 0 && <i>{x.slice(0, 2)}</i>}{x}</span>)}</div>)}</div></Card><div className="aggregate-banner"><span>i</span><p>Los datos aparecen solo cuando existe un grupo suficiente para conservar el anonimato.</p></div></AdminShell>
+      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Vista institucional" title="Áreas" description="Participación y tendencias agregadas por equipo." /><Card className="area-table-card"><div className="table-toolbar"><ChipRow options={["Todas", "Asistencial", "Administrativo"]} value="Todas" onChange={() => {}} /><input placeholder="Buscar área" aria-label="Buscar área" /></div><div className="area-table"><div className="table-row head"><span>Área</span><span>Participación</span><span>Actividades</span><span>Bienestar</span><span>Tendencia</span></div>{["Emergencia", "Hospitalización", "Administración", "Consultorios", "UCI"].map((label) => { const isCurrentArea = label === area; const row = [label, `${isCurrentArea ? participationValue : 0}%`, String(isCurrentArea ? usageStats.activities : 0), String(isCurrentArea ? Math.max(energyValue, moodValue) : 0), "0%"]; return <div className="table-row" key={label}>{row.map((value, i) => <span key={i}>{i === 0 && <i>{value.slice(0, 2)}</i>}{value}</span>)}</div>; })}</div></Card><div className="aggregate-banner"><span>i</span><p>Todos los valores comienzan en cero y solo cambian con interacciones registradas.</p></div></AdminShell>
     );
 
     if (screen === "admin-events") return (
@@ -488,7 +636,7 @@ export default function Home() {
     );
 
     if (screen === "admin-reports") return (
-      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Análisis institucional" title="Reportes" description="Configura una vista agregada para el periodo que necesites." /><div className="reports-layout"><Card className="report-builder"><h2>Configurar reporte</h2><div className="form-grid"><label>Periodo<select><option>Últimos 30 días</option><option>Este trimestre</option></select></label><label>Área<select><option>Todas las áreas</option><option>Hospitalización</option><option>UCI</option></select></label><label>Tipo de personal<select><option>Todo el personal</option><option>Asistencial</option><option>Administrativo</option></select></label></div><fieldset><legend>Contenido del reporte</legend>{["Participación", "Actividades realizadas", "Tendencias de bienestar", "Eventos", "Uso de pausas"].map((x) => <label className="check-row" key={x}><input type="checkbox" defaultChecked /><span>{x}</span></label>)}</fieldset><Button onClick={() => showToast("Reporte ficticio generado")}>Generar reporte →</Button></Card><Card className="report-preview"><span className="eyebrow">Vista previa</span><h2>Reporte de bienestar</h2><p>Últimos 30 días · Todas las áreas</p><div className="preview-metrics"><div><strong>72%</strong><small>Participación</small></div><div><strong>1,245</strong><small>Actividades</small></div></div><MiniBars values={[48, 60, 56, 72, 78, 74, 82]} /><div className="placeholder-page-lines"><i /><i /><i /></div><span className="fiction-stamp">DATOS FICTICIOS</span></Card></div></AdminShell>
+      <AdminShell screen={screen} go={go}><PageHeader eyebrow="Análisis institucional" title="Reportes" description="Configura una vista agregada para el periodo que necesites." /><div className="reports-layout"><Card className="report-builder"><h2>Configurar reporte</h2><div className="form-grid"><label>Periodo<select><option>Últimos 30 días</option><option>Este trimestre</option></select></label><label>Área<select><option>Todas las áreas</option><option>Hospitalización</option><option>UCI</option></select></label><label>Tipo de personal<select><option>Todo el personal</option><option>Asistencial</option><option>Administrativo</option></select></label></div><fieldset><legend>Contenido del reporte</legend>{["Participación", "Actividades realizadas", "Tendencias de bienestar", "Eventos", "Uso de pausas"].map((x) => <label className="check-row" key={x}><input type="checkbox" defaultChecked /><span>{x}</span></label>)}</fieldset><Button onClick={() => showToast("Reporte actualizado con los datos disponibles")}>Generar reporte →</Button></Card><Card className="report-preview"><span className="eyebrow">Vista previa</span><h2>Reporte de bienestar</h2><p>Últimos 30 días · Todas las áreas</p><div className="preview-metrics"><div><strong>{participationValue}%</strong><small>Participación</small></div><div><strong>{usageStats.activities}</strong><small>Actividades</small></div></div><MiniBars values={weeklyBars} /><div className="placeholder-page-lines"><i /><i /><i /></div><span className="live-data-badge">DATOS DISPONIBLES</span></Card></div></AdminShell>
     );
 
     if (screen === "admin-settings") return (
