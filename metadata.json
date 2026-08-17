@@ -1,0 +1,8 @@
+{
+  "name": "Bienestar INSN San Borja",
+  "description": "Plataforma de bienestar laboral del INSN San Borja con motor RAG de Machiz/Sanart, evaluación diagnóstica de Burnout (MBI 22 ítems), anonimización PII, calculadora AFC y directivas MINSA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

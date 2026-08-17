@@ -1,21 +1,3 @@
-# Entorno y Secretos
-.env
-.env.local
-
-# Python / Cache
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-env/
-venv/
-
-# Vector Store
-chroma_db/
-
-# IDE
-.vscode/
-.idea/
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
