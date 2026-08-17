@@ -1,4 +1,4 @@
-# Sanart — Plataforma de Bienestar & RAG Clínico INSN San Borja
+# Kusi+ — Plataforma de Bienestar & RAG Clínico INSN San Borja
 
 **Sanart** es una plataforma integral de bienestar laboral, contención emocional y evaluación diagnóstica del Síndrome de Burnout diseñada específicamente para el personal médico, de enfermería y asistencial del **Instituto Nacional de Salud del Niño San Borja (INSN San Borja)**.
 
