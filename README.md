@@ -28,6 +28,6 @@ npm run build
 
 ## Sitio publicado
 
-[bienestar-insn-san-borja.iba-dea.chatgpt.site](https://sanart.ai.studio)
+[bienestar-insn-san-borja.iba-dea](https://sanart.ai.studio)
 
 Los datos personales del prototipo se almacenan localmente en el navegador del usuario.
